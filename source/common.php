@@ -928,7 +928,7 @@ abstract class SQLConnection
 	protected $query_result		= null;
 	protected $autocommit		= true;
 	protected $next_row_number	= 0;
-	protected $rows				= 0;
+	protected $affected_rows	= 0;
 	protected $last_type		= '';
 	protected $prepared_format	= array();
 	protected $bad_queries		= array();
@@ -936,6 +936,7 @@ abstract class SQLConnection
 	protected $queries			= array();
 	protected $_connection_name = '';
 
+	public $all_data			= array();
 	public $row_data			= array();
 
 	const LIKE_WC_LAST = 'last';
@@ -1036,7 +1037,7 @@ abstract class SQLConnection
 	/**
 	 * Return the number of affected rows
 	 */
-	abstract function affectedRows();
+	public function affectedRows(){ return $this->affected_rows; }
 
 	/**
 	 * Return the last inserted id
@@ -1960,6 +1961,7 @@ class SQLiteConnection extends SQLConnection{
 		$explosion=explode(' ', strtolower(trim(str_replace('(','',$query))));
 		$this->last_type=array_shift($explosion);
 
+		$this->all_data=array();
 		$this->row_data=array();
 		try {
 			$time_start = microtime(true);
@@ -1969,7 +1971,7 @@ class SQLiteConnection extends SQLConnection{
 			$this->queries[]=$query.(!empty($location)?"\n# ".$location.' took '.round($time,4).' seconds at '.date(DATE_RFC822).'.':'');
 			if(round($time,4) > 3) { $this->slow_queries[]=$query.(!empty($location)?"\n# ".$location.' took '.round($time,4).' seconds at '.date(DATE_RFC822).'.':''); }
 			$this->statement=$result;
-			$this->rows=$this->statement->rowCount();
+			$this->affected_rows=$this->statement->rowCount();
 			$this->next_row_number=0;
 		} catch (PDOException $e) {
 			pr($e);
@@ -2055,9 +2057,10 @@ class SQLiteConnection extends SQLConnection{
 		$location = null;
 		if(round($time,4) > 3) { $this->slow_queries[]=current($this->queries).(!empty($location)?"\n# ".$location.' took '.round($time,4).' seconds at '.date(DATE_RFC822).'.':''); }
 
+		$this->all_data=array();
 		$this->row_data=array();
 		$this->next_row_number=0;
-		$this->rows=$this->statement->rowCount();
+		$this->affected_rows=$this->statement->rowCount();
 		return true;
 	}
 
@@ -2073,21 +2076,25 @@ class SQLiteConnection extends SQLConnection{
 	 */
 	public function readRow($return_type='ASSOC')
 	{
-		// predicts if there will be a row here or not.
-		// if not it wont run the function which will throw the error which will piss off php
-		if($this->next_row_number < $this->rows)
-		{
-			//			echo 'fetch row';
+		if(count($this->all_data) == 0){
 			switch($return_type)
 			{
-				case 'BOTH' : $this->row_data=$this->statement->fetch(PDO::FETCH_BOTH); break;
-				case 'NUM' : $this->row_data=$this->statement->fetch(PDO::FETCH_NUM); break;
-				default : $this->row_data=$this->statement->fetch(PDO::FETCH_ASSOC); break;
+				case 'BOTH' : $this->all_data=$this->statement->fetchAll(PDO::FETCH_BOTH); break;
+				case 'NUM' : $this->all_data=$this->statement->fetchAll(PDO::FETCH_NUM); break;
+				default : $this->all_data=$this->statement->fetchAll(PDO::FETCH_ASSOC); break;
 			}
+		}
+		if(count($this->all_data) == 0){ return false; }
+		
+		$this->row_data = array();
+		$result = each($this->all_data);
+
+		if(isset($result['key']) && isset($result['value'])){
+			$this->row_data = $result['value'];
 			$this->next_row_number = $this->next_row_number+1;
 			return true;
 		}
-		else { return false; }
+		return false;
 	}
 
 	public function read($return_type='ASSOC')
@@ -2095,12 +2102,12 @@ class SQLiteConnection extends SQLConnection{
 		//		echo 'fetch all';
 		switch($return_type)
 		{
-			case 'BOTH' : $this->row_data=$this->statement->fetchAll(PDO::FETCH_BOTH); break;
-			case 'NUM' : $this->row_data=$this->statement->fetchAll(PDO::FETCH_NUM); break;
-			default : $this->row_data=$this->statement->fetchAll(PDO::FETCH_ASSOC); break;
+			case 'BOTH' : $this->all_data=$this->statement->fetchAll(PDO::FETCH_BOTH); break;
+			case 'NUM' : $this->all_data=$this->statement->fetchAll(PDO::FETCH_NUM); break;
+			default : $this->all_data=$this->statement->fetchAll(PDO::FETCH_ASSOC); break;
 		}
-		$this->rows = $this->next_row_number = count($this->row_data);
-		return $this->row_data;
+		$this->next_row_number = 0;
+		return $this->all_data;
 	}
 
 	/**
@@ -2363,7 +2370,7 @@ function table_exists(SQLiteConnection $db, $table_name){
 	
 	$db->read();
 	
-	return (count($db->row_data) > 0);
+	return (count($db->all_data) > 0);
 }
 
 class DataObject extends Model{}
@@ -2384,9 +2391,9 @@ function record_visit(SQLiteConnection $db){
 	
 // 	echo 'Cookie, why are you misbehaving?';
 // 	pr($_COOKIE);
-// 	pr($db->row_data);
+// 	pr($db->all_data);
 	
-	if(!isset($db->row_data[0]['id'])){
+	if(!isset($db->all_data[0]['id'])){
 		
 		//echo 'insert at hit 1';
 		
@@ -2431,7 +2438,7 @@ function record_visit(SQLiteConnection $db){
 			$db->execute(array(':ip_guess'=>guess_ip()));
 			$db->read();
 			
-			$visitor_id = isset($db->row_data[0]['id'])?$db->row_data[0]['id']:0;
+			$visitor_id = isset($db->all_data[0]['id'])?$db->all_data[0]['id']:0;
 			if($visitor_id > 0){
 				// try setting it again
 				setcookie('visitor_id', $visitor_id, time()+60*60*24*30, '/');
@@ -2491,7 +2498,7 @@ function record_visit(SQLiteConnection $db){
 	
 	$db->query('SELECT * FROM visitor', __LINE__, __FILE__);
 	$db->read();
-// 	pr($db->row_data);
+// 	pr($db->all_data);
 	
 // 	pr($visitor_id);
 	
@@ -2523,7 +2530,7 @@ function record_visit(SQLiteConnection $db){
 	
 	$db->query('SELECT * FROM visit', __LINE__, __FILE__);
 	$db->read();
-// 	pr($db->row_data);
+// 	pr($db->all_data);
 	
 	return $visitor_id;
 }
@@ -2557,9 +2564,17 @@ function get_db_instance(){
 	
 	if(!table_exists($db, 'content')){
 		$results = $db->query(
-			'CREATE TABLE "content" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL , "content_type_id" INTEGER NOT NULL DEFAULT 1, "title" VARCHAR NOT NULL, "content_path" VARCHAR , "out_link" VARCHAR , "hits" INTEGER NOT NULL DEFAULT 0, "is_affiliate_link" BOOL NOT NULL DEFAULT FALSE, "is_active" BOOL NOT NULL DEFAULT TRUE, "created_date" DATETIME NOT NULL  DEFAULT CURRENT_DATE);',
+			'CREATE TABLE "content" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL , "content_type_id" INTEGER NOT NULL DEFAULT 1, "content_category_id" INTEGER, "title" VARCHAR NOT NULL, "content_path" VARCHAR , "out_link" VARCHAR , "hits" INTEGER NOT NULL DEFAULT 0, "is_affiliate_link" BOOL NOT NULL DEFAULT FALSE, "is_active" BOOL NOT NULL DEFAULT TRUE, "created_date" DATETIME NOT NULL  DEFAULT CURRENT_DATE);',
 			__LINE__,
 			__FILE__
+		);
+	}
+	
+	if(!table_exists($db, 'content_category')){
+		$results = $db->query(
+				'CREATE TABLE "content_category" ("id" INTEGER PRIMARY KEY  NOT NULL, "title" VARCHAR NOT NULL, "created_date" DATETIME NOT NULL  DEFAULT CURRENT_DATE);',
+				__LINE__,
+				__FILE__
 		);
 	}
 	

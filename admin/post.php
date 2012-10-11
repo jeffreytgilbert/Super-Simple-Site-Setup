@@ -18,17 +18,20 @@ if(isset($_POST['Content']) && is_array($_POST['Content'])){
 		INSERT INTO content (
 			title,
 			content_type_id,
+			content_category_id,
 			is_affiliate_link
 		) VALUES (
 			:title,
 			:content_type_id,
+			:content_category_id,
 			:is_affiliate_link
 		)', __LINE__, __FILE__);
 		
 		$db->execute(array(
-				':title' => $Content->get('title'),
-				':content_type_id' => $Content->get('content_type_id'),
-				':is_affiliate_link' => (bool)$Content->get('is_affiliate_link')
+			':title' => $Content->get('title'),
+			':content_type_id' => $Content->get('content_type_id'),
+			':content_category_id' => $Content->get('content_category_id'),
+			':is_affiliate_link' => (bool)$Content->get('is_affiliate_link')
 		));
 		
 		$item_id = $db->insertId();
@@ -226,6 +229,21 @@ $db->query('
 $db->read();
 $posts = $db->row_data;
 
+$db->query('
+	SELECT
+		*
+	FROM content_category',
+	__LINE__,
+	__FILE__
+);
+
+// create a data collection
+$ContentCategories = new ModelCollection();
+
+while($db->readRow()){
+	$ContentCategories->addItem(new Model($db->row_data));
+}
+
 ?>
 
 <html>
@@ -233,8 +251,10 @@ $posts = $db->row_data;
 <head>
 <title>Super Simple Site Setup</title>
 <link href='/css/common.css' rel='stylesheet' type='text/css'>
+<link href='/css/impromptu.css' rel='stylesheet' type='text/css'>
 <link href='http://fonts.googleapis.com/css?family=Allura' rel='stylesheet' type='text/css'>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+<script src="/js/jquery.impromptu.js"></script>
 <script>
 function show_inputs(){
 	switch($('#type_selector').val()){
@@ -272,6 +292,84 @@ $(document).ready(function(){
 		show_inputs();
 	});
 	show_inputs();
+
+	
+	var CatForm = $('#ContentCategoryForm');
+
+	var category_form_showing = false;
+
+	var new_category = '';
+	
+	// add form handlers
+	// on success / failure handlers
+	// on success, add new category and id to list, and then select that category
+	// then hide form again
+	// put the form in a popup window with impromptu so it can modal over the secondary form
+	
+	$('#AddACategoryButton').click(function(){
+
+		if(!category_form_showing){
+			category_form_showing = true;
+			
+			$.prompt(CatForm.html(),{ 
+				buttons:{Create:true},
+				submit: function(e,v,m,f){ // event[, value, message, formVals]
+					console.log('submit button bound correctly');
+					// require category title to be filled
+					console.log($('.jqimessage .category_title').val());
+					if($('.jqimessage .category_title').val() == ""){
+						$('.jqimessage .category_title').css("border","solid #ff0000 1px");
+						return false;
+					}
+					
+					new_category = $('.jqimessage .category_title').val();
+					$('.jqimessage .category_title').css("border","solid #000000 1px");
+					
+					return true;
+					
+				},
+				callback: function(e,v,m,f){ // event[, value, message, formVals]
+	
+					$.ajax({
+						type:'POST',
+						cache:false,
+						dataType:'json',
+						url: CatForm.attr('action'),
+						data: { 'ContentCategory[title]' : new_category },
+						success: function(data, textStatus, jqXHR){
+	//						console.log(data);
+	//						console.log(textStatus);
+							console.log(typeof data.Confirmations.Success != 'undefined');
+							if(typeof data.Confirmations.Success != 'undefined'){
+								// alert(data.Confirmations.Success);
+	
+								$('#category_selector').append('<option value="'+data.Confirmations.Success+'">'+new_category+'</option>');
+								$('#category_selector').val(data.Confirmations.Success);
+								
+							} else if(typeof data.Notices.Notice != 'undefined'){
+								alert(data.Notices.Notice);
+							} else {
+	//							console.log(data.Errors);
+								$.each(data.Errors, function(i,n){
+									alert("Error: "+i+" \nMessage: "+n);
+								});
+							}
+							category_form_showing = false;
+						},
+						error:function(jqXHR, textStatus, errorThrown){
+							alert('Womp womp whaaa. ERRor');
+	//						console.log(textStatus);
+	//						console.log(errorThrown);
+							category_form_showing = false;
+						}
+					});
+				
+				}
+			});
+	
+			return false;
+		}
+	});
 });
 </script>
 </head>
@@ -291,6 +389,12 @@ $(document).ready(function(){
 		
 		<div><br clear="all"/></div>
 		
+		<div id="category_form" style="display:none;">
+			<form action="/category.php" method="post" name="ContentCategoryForm" id="ContentCategoryForm">
+				<label for="category_title">New Category Name: </label><input class="category_title" type="text" name="ContentCategory[title]">
+			</form>
+		</div>
+		
 		<div id="contents">
 			<div id="data_form">
 				<form action="?" method="post" enctype="multipart/form-data" name="ContentForm">
@@ -309,6 +413,16 @@ $(document).ready(function(){
 				    <tr>
 				      <td>Title</td>
 				      <td><input type="text" name="Content[title]" value="<?php echo $Content->getData('title') ?>"></td>
+				    </tr>
+				    <tr>
+				      <td>Category</td>
+				      <td><select name="Content[content_category_id]" id="category_selector">
+				      <?php foreach($ContentCategories as $ContentCategory): ?>
+				      	<option value="<?php echo $ContentCategory->get('id') ?>"<?php echo ($Content->get('content_category_id') == $ContentCategory->get('id')?' selected="selected"':'') ?>><?php echo $ContentCategory->get('title') ?></option>
+				      <?php endforeach; ?>
+				      </select>
+				      <a id="AddACategoryButton" href="#">Add a category</a>
+				      </td>
 				    </tr>
 				    <tr>
 				      <td>Is this a paid ad?</td>
