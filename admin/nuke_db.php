@@ -45,6 +45,14 @@ if(isset($_POST['Yes'])){
 		__LINE__,
 		__FILE__
 	);
+	$results = $db->query(
+		'DROP TABLE "content_category";',
+		__LINE__,
+		__FILE__
+	);
+	
+	@unlink('../db/sqlite.db');
+	
 	header('Location: /create_db.php');
 	
 }
