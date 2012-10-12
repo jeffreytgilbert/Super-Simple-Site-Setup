@@ -227,7 +227,7 @@ $db->query('
 );
 
 $db->read();
-$posts = $db->row_data;
+$posts = $db->all_data;
 
 $db->query('
 	SELECT

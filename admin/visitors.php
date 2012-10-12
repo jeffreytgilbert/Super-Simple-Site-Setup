@@ -22,7 +22,7 @@ $db->query('
 );
 
 $db->read();
-$visitors = count($db->row_data)>0?$db->row_data:array();
+$visitors = count($db->all_data)>0?$db->all_data:array();
 
 
 $db->query('
@@ -39,7 +39,7 @@ $db->query('
 );
 
 $db->read();
-$repeat_visitors = count($db->row_data)>0?$db->row_data:array();
+$repeat_visitors = count($db->all_data)>0?$db->all_data:array();
 
 ?>
 

@@ -18,7 +18,7 @@ $db->query('
 );
 
 $db->read();
-$posts = $db->row_data;
+$posts = $db->all_data;
 
 header('Content-Type:text/xml');
 echo '<'.'?xml version="1.0" encoding="UTF-8"'.'?'.'>'; 

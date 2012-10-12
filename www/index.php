@@ -19,7 +19,7 @@ $db->query('
 );
 
 $db->read();
-$posts = $db->row_data;
+$posts = $db->all_data;
 
 $PageData = new PageData($start, count($posts), 48);
 

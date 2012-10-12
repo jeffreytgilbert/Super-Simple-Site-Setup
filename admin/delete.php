@@ -16,7 +16,7 @@ if(_p('id')){
 	);
 	
 	$db->read();
-	$posts = $db->row_data;
+	$posts = $db->all_data;
 	if(count($posts) == 0){ header('Location: 404'); }
 	$post = array_pop($posts);
 	
